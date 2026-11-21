@@ -46,11 +46,6 @@
             event.key.toLowerCase() === 'h' &&
             !event.repeat
         ) {
-            const target = event.target;
-            if (
-                target instanceof HTMLElement &&
-                (target.isContentEditable || target.closest('input, textarea, select'))
-            ) return;
             event.preventDefault();
             const enabled = root.getAttribute(STATE_ATTRIBUTE) === 'on';
             root.setAttribute(STATE_ATTRIBUTE, enabled ? 'off' : 'on');
