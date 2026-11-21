@@ -84,13 +84,49 @@ def collect_urls(args: argparse.Namespace) -> list[str]:
     return list(dict.fromkeys(url.strip() for url in urls))
 
 
-def _write_archive_info(directory: Path, group: ImageGroup) -> None:
+def parse_frame_range(spec: str) -> tuple[int, int]:
+    """Parse inclusive, one-based viewer frame numbers (e.g. 600-620)."""
+    match = re.fullmatch(r"([0-9]+)-([0-9]+)", spec.strip())
+    if not match:
+        raise DownloadError("--frames must be an inclusive range like 600-620.")
+    start, end = map(int, match.groups())
+    if start < 1 or end < start:
+        raise DownloadError("--frames must start at 1 or later, with start <= end.")
+    return start, end
+
+
+def select_group_frames(group: ImageGroup, frames: tuple[int, int] | None) -> list[str]:
+    if frames is None:
+        return group.image_urls
+    start, end = frames
+    if end > len(group.image_urls):
+        raise DownloadError(
+            f"Requested frames {start}-{end}, but the group lists only "
+            f"{len(group.image_urls)} image(s)."
+        )
+    selected: dict[int, str] = {}
+    for url in group.image_urls:
+        number = parse_familysearch_url(url).page_number
+        if number is not None and start <= number <= end:
+            selected[number] = url
+    missing = [str(number) for number in range(start, end + 1) if number not in selected]
+    if missing:
+        raise DownloadError(
+            "Image group is missing requested frame(s): " + ", ".join(missing[:10])
+        )
+    return [selected[number] for number in range(start, end + 1)]
+
+
+def _write_archive_info(
+    directory: Path, group: ImageGroup, frames: tuple[int, int] | None = None
+) -> None:
     lines = [
         f"Title: {group.title or '-'}",
         f"Archival reference: {group.reference or '-'}",
         f"Image group number: {group.dgs_number}",
         f"Group id: {group.group_id}",
         f"Images: {len(group.image_urls)}",
+        f"Selected frames: {frames[0]}-{frames[1]}" if frames else "Selected frames: all",
         f"Source: {group.source_url}",
         "",
     ]
@@ -109,6 +145,9 @@ def download_urls(args: argparse.Namespace) -> BatchResult:
     urls = collect_urls(args)
     for url in urls:
         validate_source_url(url)
+    frames = parse_frame_range(args.frames) if args.frames is not None else None
+    if frames is not None and any(not is_group_url(url) for url in urls):
+        raise DownloadError("--frames requires an image group URL (groupId or imageGroupNumbers).")
     result = BatchResult()
     interactive = sys.stdin.isatty()
     session_value = get_session(interactive)
@@ -131,6 +170,7 @@ def download_urls(args: argparse.Namespace) -> BatchResult:
         if is_group_url(raw_url):
             try:
                 group = fetch_image_group(raw_url, session_value)
+                selected_urls = select_group_frames(group, frames)
             except SessionRejected:
                 session_value = refresh_session()
                 continue
@@ -144,13 +184,13 @@ def download_urls(args: argparse.Namespace) -> BatchResult:
             if legacy_dir.is_dir() and legacy_dir != group_dir and not group_dir.exists():
                 legacy_dir.rename(group_dir)
             group_dir.mkdir(parents=True, exist_ok=True)
-            _write_archive_info(group_dir, group)
+            _write_archive_info(group_dir, group, frames)
             print(
-                f"{group.folder_name}: {len(group.image_urls)} image(s), "
-                f"saving to {group_dir.resolve()}"
+                f"{group.folder_name}: {len(selected_urls)} selected of "
+                f"{len(group.image_urls)} image(s), saving to {group_dir.resolve()}"
             )
             jobs.popleft()
-            jobs.extendleft((image_url, group_dir) for image_url in reversed(group.image_urls))
+            jobs.extendleft((image_url, group_dir) for image_url in reversed(selected_urls))
             continue
         try:
             document = parse_familysearch_url(raw_url)
@@ -161,8 +201,9 @@ def download_urls(args: argparse.Namespace) -> BatchResult:
             continue
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        target = output_dir / document.filename
-        legacy = base_output / document.filename
+        filename = document.filename_for_format(args.format)
+        target = output_dir / filename
+        legacy = base_output / filename
         if not target.exists() and legacy != target and legacy.is_file():
             legacy.rename(target)
         if is_complete_image(target):
@@ -179,6 +220,7 @@ def download_urls(args: argparse.Namespace) -> BatchResult:
                 jpeg_quality=args.quality,
                 workers=args.workers,
                 progress=console_progress,
+                image_format=args.format,
             )
         except SessionRejected:
             session_value = refresh_session()
@@ -220,7 +262,7 @@ def bounded_integer(minimum: int, maximum: int):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fsd",
-        description="Download FamilySearch document images as single JPEG files.",
+        description="Download FamilySearch document images as JPEG or PNG files.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -243,10 +285,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"output directory (default: {DEFAULT_OUTPUT_DIR})",
     )
     download.add_argument(
+        "--frames",
+        metavar="START-END",
+        help="inclusive 1-based viewer frame range for image group URLs, e.g. 600-620",
+    )
+    download.add_argument(
+        "--format",
+        choices=("jpeg", "png"),
+        default="jpeg",
+        help="output image format (default: jpeg; PNG avoids further JPEG compression)",
+    )
+    download.add_argument(
         "--quality",
         type=bounded_integer(70, 100),
         default=95,
-        help="JPEG quality, 70-100 (default: 95)",
+        help="JPEG quality, 70-100 (default: 95; ignored for PNG)",
     )
     download.add_argument(
         "--workers",
