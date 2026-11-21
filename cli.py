@@ -357,6 +357,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     capture.add_argument("--next-delay", type=float, default=3.0)
     capture.add_argument("--allow-single", action="store_true")
+    capture.add_argument(
+        "--keep-raw", action="store_true",
+        help="retain raw screenshots after a successful stitch (default: delete)",
+    )
     capture.add_argument("--url", default="", help="source URL for metadata only")
     capture.add_argument("--out", type=Path, required=True)
     return parser
@@ -464,6 +468,7 @@ def main() -> int:
                     ctrl_wheel_zoom=args.ctrl_wheel_zoom,
                     wheel_zoom=args.wheel_zoom,
                     next_delay=args.next_delay, allow_single=args.allow_single,
+                    keep_raw=args.keep_raw,
                     source_url=args.url, clean_ui=args.clean_ui,
                 )
             except (CaptureError, ValueError) as error:
