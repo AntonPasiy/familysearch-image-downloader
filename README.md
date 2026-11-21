@@ -2,7 +2,7 @@
 
 # FamilySearch Image Downloader
 
-**Download archive pages as full-resolution JPEGs, in reading order.**
+**Download archive pages as full-resolution JPEGs or PNGs, in reading order.**
 
 Python 3.11+ · uv · CLI · Individual pages and complete image groups · Resume support
 
@@ -17,6 +17,8 @@ Based on [thefirans/familysearch-image-downloader](https://github.com/thefirans/
 The downloader retrieves available FamilySearch DeepZoom tiles and assembles them at the highest detected resolution. Complete image groups receive a separate folder containing numbered pages and source metadata.
 
 - **Three link formats:** ARK pages, viewers with `groupId`, and searches with `imageGroupNumbers`.
+- **Selected frames:** `--frames 600-620` limits group downloads to inclusive, 1-based viewer frame numbers.
+- **PNG output:** `--format png` avoids encoding the stitched tiles as JPEG again (the source tiles are JPEG).
 - **Batch input:** command-line arguments, text files, or Markdown tables.
 - **Resume support:** readable JPEGs are skipped; damaged files are downloaded again.
 - **Atomic output:** the final JPEG is published only after saving succeeds.
@@ -76,10 +78,44 @@ Quote URLs containing `&` or `?` in shell commands.
 | Link format | Download scope |
 | --- | --- |
 | `/ark:/61903/3:1:…?i=0` | One page; `i` is zero-based |
-| `/ark:/61903/3:1:…?groupId=TH-…` | Every page in the group |
-| `/en/records/images/search-results?imageGroupNumbers=004115246` | Every page in the specified DGS image group |
+| `/ark:/61903/3:1:…?groupId=TH-…` | Entire group, or selected frames with `--frames` |
+| `/en/records/images/search-results?imageGroupNumbers=004115246` | Entire DGS group, or selected frames with `--frames` |
+| `/records/images/image-details?imageGroupNumbers=7805075&page=1&rmsId=…` | DGS group; select viewer frames with `--frames` |
 
-Each search link must contain one numeric `imageGroupNumbers` value. The public census page belongs to [DGS 004115246](https://www.familysearch.org/en/records/images/search-results?imageGroupNumbers=004115246), titled *12th Census of Population 1900*. The group contained **1,128 images** when checked. A group link downloads the entire group; use the single-page example above for a quick first run.
+Each search link must contain one numeric `imageGroupNumbers` value.
+
+### Download a selected range of archive frames (Windows PowerShell)
+
+For example, to select **frames 600 through 620 inclusive** (21 images) from
+the 1796 Boguslav district confession records, use these commands **only for
+collections that permit saving copies**:
+
+```powershell
+uv sync --locked --no-dev
+uv run --locked --no-dev fsd login
+uv run --locked --no-dev fsd download --frames 600-620 --format png --out downloads/1796 `
+  "https://www.familysearch.org/records/images/image-details?imageGroupNumbers=7805075&page=1&rmsId=M9MV-Y8B"
+```
+
+Alternatively, the ARK viewer link for the same group:
+
+```powershell
+uv run --locked --no-dev fsd download --frames 600-620 --format png --out downloads/1796 `
+  "https://www.familysearch.org/ark:/61903/3:1:3Q9M-CS92-WSGQ-M?view=explore&groupId=M9MV-Y8B&lang=ru"
+```
+
+`--frames` uses **1-based image numbers from the FamilySearch viewer**,
+not printed page or folio numbers, and works only with image group links.
+Both commands request the same 21 images; run just one of them.
+Without `--frames`, the existing full-group behavior is unchanged.
+The downloader relies on FamilySearch group metadata, which has not yet been
+tested live with this particular collection.
+
+`--format png` saves the **decoded JPEG tiles** in a losslessly encoded PNG,
+avoiding further JPEG compression. It does not reverse compression already
+present in the downloaded tiles.
+
+ The public census page belongs to [DGS 004115246](https://www.familysearch.org/en/records/images/search-results?imageGroupNumbers=004115246), titled *12th Census of Population 1900*. The group contained **1,128 images** when checked. A group link downloads the entire group; use the single-page example above for a quick first run.
 
 Pass several URLs as arguments, or use an input file:
 
@@ -111,7 +147,9 @@ For `.txt` files, use one URL per line. Blank lines and lines starting with `#` 
 | --- | --- | --- |
 | `-f, --from-file FILE` | — | URL list or Markdown table |
 | `-o, --out DIR` | `downloads` | Output directory |
-| `--quality 70…100` | `95` | JPEG quality |
+| `--frames START-END` | — | Inclusive 1-based viewer frame range; group links only |
+| `--format jpeg\|png` | `jpeg` | PNG output avoids additional JPEG compression |
+| `--quality 70…100` | `95` | JPEG quality (ignored for PNG) |
 | `--workers 1…16` | `8` | Concurrent tile download workers |
 
 ```bash
@@ -135,7 +173,7 @@ downloads/
 
 Group folders use the archive reference and DGS number. If the reference is unavailable, the DGS number is used alone. `info.txt` records the title, reference, identifiers, page count, and source URL. Individual image links without `i` produce filenames without a page prefix.
 
-Rerun the same command to resume an interrupted batch. Existing images are fully decoded before being skipped. An unfinished page is downloaded again; individual tiles are not retained between runs. Checking a large collection can take time.
+Rerun the same command to resume an interrupted batch. Existing JPEG or PNG images are fully decoded before being skipped. An unfinished page is downloaded again; individual tiles are not retained between runs. Checking a large collection can take time.
 
 Requests are paced, with a 4–10 second pause between newly downloaded pages. Download time depends on the number of tiles and server response times.
 
