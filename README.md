@@ -6,7 +6,7 @@
 
 Python 3.11+ · uv · CLI · Individual pages and complete image groups · Resume support
 
-[Quick start](#quick-start) · [Links and tables](#links-and-tables) · [Screenshot capture & stitching](docs/screenshots.md) · [Options](#options) · [Development](#development)
+[Quick start](#quick-start) · [Links and tables](#links-and-tables) · [Screenshot capture & stitching](docs/screenshots.md) · [Clean viewer userscript](familysearch-clean.user.js) · [Options](#options) · [Development](#development)
 
 </div>
 
