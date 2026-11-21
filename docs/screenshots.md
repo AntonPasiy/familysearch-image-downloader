@@ -194,11 +194,29 @@ cumulative scaling. Verify that the viewer preserves scale between frames.
 The script seeks the top-left image edge, pans in a snake path, takes
 overlapping PNG screenshots, stitches each page, then operates the
 configured Next control. Images are saved to `frame_0600.png`, etc.;
-unmodified captures stay in `raw/frame_0600/`.
+raw screenshots are **automatically deleted after a successful stitch**.
+If capture or stitching fails, raw screenshots stay available for debugging.
+Use `--keep-raw` only when explicitly needed for diagnostics.
 `capture_manifest.json` records the expected page number and source URL
 (`--url` for metadata only). It marks
 `viewer_frame_number_verified: false`, because it cannot read the viewer
 counter. Inspect this against the actual website before trusting a batch.
+
+### Readiness for a multi-frame run
+
+The current implementation can *attempt* multiple frames, but a production
+batch is not verified on FamilySearch until:
+1. A complete, correctly stitched frame 600 is visually checked with physical
+   paper edges on all four sides.
+2. The capture rectangle is isolated from the Cursor chat or other overlays
+   throughout the entire run (a separate browser window is preferable).
+3. A 600-601 trial confirms that the viewer advances by exactly one frame and
+   retains the intended zoom. The manifest reports
+   `viewer_frame_number_verified: false`, because the CLI cannot verify the
+   visible frame counter.
+
+Only then start 600-620. The tool does not automatically detect paper edges
+or verify that the visible frame number matches its output filename.
 
 ### Operational limits
 
