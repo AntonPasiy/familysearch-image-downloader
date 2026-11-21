@@ -328,8 +328,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="drag the image (default) or use Shift+wheel / Alt+wheel",
     )
     capture.add_argument(
-        "--wheel-ticks", type=int, default=3,
-        help="wheel notches per pan step in wheel mode (default 3)",
+        "--wheel-ticks", type=int, default=160,
+        help="wheel notches per pan step in wheel mode (default 160)",
     )
     capture.add_argument(
         "--invert-horizontal-wheel", action="store_true",
@@ -351,6 +351,10 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--max-cols", type=int, default=12)
     capture.add_argument("--max-rows", type=int, default=12)
     capture.add_argument("--start-delay", type=float, default=5.0)
+    capture.add_argument(
+        "--preview-only", action="store_true",
+        help="save a screenshot of --region without moving or zooming; inspect before capture",
+    )
     capture.add_argument("--next-delay", type=float, default=3.0)
     capture.add_argument("--allow-single", action="store_true")
     capture.add_argument("--url", default="", help="source URL for metadata only")
@@ -420,8 +424,8 @@ def main() -> int:
                 bool(x) for x in (args.ctrl_wheel_zoom, args.wheel_zoom, args.zoom_count)
             ) > 1:
                 raise DownloadError("Choose only one of the three zoom methods.")
-            if not 1 <= args.wheel_ticks <= 20:
-                raise DownloadError("--wheel-ticks must be between 1 and 20")
+            if not 1 <= args.wheel_ticks <= 400:
+                raise DownloadError("--wheel-ticks must be between 1 and 400")
             if args.next_click and args.next_key:
                 raise DownloadError("Specify either --next-click or --next-key")
             if args.zoom_count and not args.zoom_click:
@@ -444,6 +448,15 @@ def main() -> int:
                     scanner = Scanner(desktop, region, **scanner_settings)
                 print(f"Open viewer at frame {start}. Starting in {args.start_delay}s...")
                 desktop.sleep(args.start_delay)
+                if args.preview_only:
+                    args.out.mkdir(parents=True, exist_ok=True)
+                    preview = args.out / "preview.png"
+                    desktop.screenshot(region).save(preview, "PNG")
+                    print(
+                        f"Viewport preview saved to {preview}; "
+                        "check that it contains the document, not Cursor chat."
+                    )
+                    return 0
                 capture_pages(
                     scanner, start=start, end=end, out=args.out,
                     next_click=_point(args.next_click), next_key=args.next_key,
