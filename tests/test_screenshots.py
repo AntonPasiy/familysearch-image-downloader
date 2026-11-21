@@ -14,7 +14,7 @@ except ImportError:
 
 if cv2 is not None:
     from PIL import Image, ImageChops, ImageDraw
-    from screenshot_capture import CaptureError, Region, Scanner
+    from screenshot_capture import CaptureError, Region, Scanner, capture_pages
     from screenshot_stitch import StitchError, stitch
 
 
@@ -70,6 +70,46 @@ class ScreenshotTests(unittest.TestCase):
         for value in ["20,30,100", "1,2,80,80", "a,b,c,d", "-1,0,200,200"]:
             with self.subTest(value=value), self.assertRaises(CaptureError):
                 Region.parse(value)
+
+    def test_clean_view_switches_on_and_restores_even_after_error(self):
+        class FakeDesktop:
+            def __init__(self):
+                self.shortcuts = []
+
+            def hotkey(self, *keys):
+                self.shortcuts.append(keys)
+
+            def sleep(self, seconds):
+                pass
+
+        class FakeScanner:
+            def __init__(self, should_fail):
+                self.desktop = FakeDesktop()
+                self.should_fail = should_fail
+
+            def take_page(self, page, out, allow_single=False):
+                if self.should_fail:
+                    raise CaptureError("simulated capture failure")
+                return {"page": page, "status": "stitched", "tiles": 2}
+
+        expected = [("ctrl", "alt", "h"), ("ctrl", "alt", "h")]
+        for should_fail in (False, True):
+            with self.subTest(should_fail=should_fail):
+                scanner = FakeScanner(should_fail)
+                with tempfile.TemporaryDirectory() as directory:
+                    if should_fail:
+                        with self.assertRaises(CaptureError):
+                            capture_pages(
+                                scanner, start=600, end=600,
+                                out=Path(directory), clean_ui=True,
+                            )
+                    else:
+                        result = capture_pages(
+                            scanner, start=600, end=600,
+                            out=Path(directory), clean_ui=True,
+                        )
+                        self.assertEqual(result[0]["page"], 600)
+                    self.assertEqual(scanner.desktop.shortcuts, expected)
 
     def test_snake_capture_from_simulated_viewer(self):
         source = self.source()
