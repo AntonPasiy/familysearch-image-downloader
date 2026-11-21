@@ -354,7 +354,8 @@ def main() -> int:
                 from screenshot_stitch import EXTENSIONS, StitchError, stitch
             except ImportError as error:
                 raise DownloadError(
-                    "Install optional screenshot requirements first: "
+                    f"Cannot import screenshot tools: {error}. "
+                    "Update your installed project and install optional dependencies: "
                     "uv pip install -r requirements-screenshots.txt"
                 ) from error
             paths = sorted(
@@ -372,7 +373,8 @@ def main() -> int:
                 from screenshot_capture import CaptureError, Desktop, Region, Scanner, capture_pages
             except ImportError as error:
                 raise DownloadError(
-                    "Install optional screenshot requirements first: "
+                    f"Cannot import screenshot tools: {error}. "
+                    "Update your installed project and install optional dependencies: "
                     "uv pip install -r requirements-screenshots.txt"
                 ) from error
             if args.max_cols < 1 or args.max_rows < 1 or args.zoom_count < 0:
