@@ -14,7 +14,7 @@ except ImportError:
 
 if cv2 is not None:
     from PIL import Image, ImageChops, ImageDraw
-    from screenshot_capture import CaptureError, Desktop, Region, Scanner, capture_pages
+    from screenshot_capture import CaptureError, Desktop, Region, Scanner, WheelScanner, capture_pages
     from screenshot_stitch import StitchError, stitch
 
 
@@ -197,6 +197,98 @@ class ScreenshotTests(unittest.TestCase):
                     FakeScanner(), start=600, end=600, out=Path(directory),
                     ctrl_wheel_zoom=2, zoom_count=2, zoom_click=(10, 10),
                 )
+
+    def test_plain_wheel_zoom_and_modifier_pan_release_keys(self):
+        class Gui:
+            def __init__(self):
+                self.events = []
+
+            def moveTo(self, *xy):
+                self.events.append(("move", *xy))
+
+            def scroll(self, ticks):
+                self.events.append(("scroll", ticks))
+
+            def keyDown(self, key):
+                self.events.append(("down", key))
+
+            def keyUp(self, key):
+                self.events.append(("up", key))
+
+        desktop = Desktop.__new__(Desktop)
+        desktop.gui = Gui()
+        desktop.pause = 0
+        region = Region(100, 200, 500, 360)
+        desktop.wheel_zoom(region, 2)
+        desktop.modifier_wheel_pan(region, "shift", -3)
+        desktop.modifier_wheel_pan(region, "alt", 3)
+        self.assertEqual(
+            desktop.gui.events,
+            [
+                ("move", 350, 380), ("scroll", 2),
+                ("move", 350, 380), ("down", "shift"),
+                ("scroll", -3), ("up", "shift"),
+                ("move", 350, 380), ("down", "alt"),
+                ("scroll", 3), ("up", "alt"),
+            ],
+        )
+
+    def test_wheel_scanner_snake_covers_all_edges(self):
+        source = self.source()
+
+        class WheelDesktop:
+            def __init__(self):
+                self.x, self.y = 90, 70
+                self.commands = []
+
+            def screenshot(self, region):
+                return source.crop(
+                    (self.x, self.y, self.x + region.width, self.y + region.height)
+                )
+
+            def modifier_wheel_pan(self, region, modifier, ticks):
+                self.commands.append((modifier, ticks))
+                travel = ticks * 85
+                if modifier == "shift":
+                    self.x = max(0, min(source.width - region.width, self.x - travel))
+                elif modifier == "alt":
+                    self.y = max(0, min(source.height - region.height, self.y - travel))
+                else:
+                    raise AssertionError("unexpected modifier")
+
+        with tempfile.TemporaryDirectory() as directory:
+            desktop = WheelDesktop()
+            scanner = WheelScanner(
+                desktop, Region(0, 0, 500, 360),
+                wheel_ticks=3, max_cols=7, max_rows=7,
+            )
+            result = scanner.take_page(600, Path(directory))
+            self.assertEqual(result["status"], "stitched")
+            self.assertTrue(any(key == "shift" for key, _ in desktop.commands))
+            self.assertTrue(any(key == "alt" for key, _ in desktop.commands))
+            with Image.open(result["path"]) as actual:
+                self.assertEqual(actual.size, source.size)
+                self.assertIsNone(ImageChops.difference(actual, source).getbbox())
+
+    def test_inverted_wheel_direction_is_configurable(self):
+        class WheelDesktop:
+            def __init__(self):
+                self.commands = []
+
+            def screenshot(self, region):
+                return Image.new("RGB", (region.width, region.height), "black")
+
+            def modifier_wheel_pan(self, region, modifier, ticks):
+                self.commands.append((modifier, ticks))
+
+        desktop = WheelDesktop()
+        scanner = WheelScanner(
+            desktop, Region(0, 0, 400, 300), wheel_ticks=2,
+            horizontal_sign=-1, vertical_sign=1,
+        )
+        self.assertFalse(scanner.move(+100, 0))
+        self.assertFalse(scanner.move(0, -100))
+        self.assertEqual(desktop.commands, [("shift", -2), ("alt", -2)])
 
     def test_snake_capture_from_simulated_viewer(self):
         source = self.source()
