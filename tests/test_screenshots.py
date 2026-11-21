@@ -269,6 +269,7 @@ class ScreenshotTests(unittest.TestCase):
             with Image.open(result["path"]) as actual:
                 self.assertEqual(actual.size, source.size)
                 self.assertIsNone(ImageChops.difference(actual, source).getbbox())
+            self.assertFalse((Path(directory) / "raw" / "frame_0600").exists())
 
     def test_inverted_wheel_direction_is_configurable(self):
         class WheelDesktop:
@@ -374,6 +375,32 @@ class ScreenshotTests(unittest.TestCase):
             self.assertEqual(desktop.sleeps, 1)
             with Image.open(target) as image:
                 self.assertEqual(image.size, (954, 600))
+
+    def test_keep_raw_opt_out_retains_screenshots_after_success(self):
+        source = self.source()
+
+        class FakeDesktop:
+            def __init__(self):
+                self.x, self.y = 180, 100
+
+            def screenshot(self, region):
+                return source.crop(
+                    (self.x, self.y, self.x + region.width, self.y + region.height)
+                )
+
+            def drag(self, region, dx, dy):
+                self.x = max(0, min(source.width - region.width, self.x - dx))
+                self.y = max(0, min(source.height - region.height, self.y - dy))
+
+        with tempfile.TemporaryDirectory() as directory:
+            scanner = Scanner(
+                FakeDesktop(), Region(0, 0, 500, 360), max_cols=5, max_rows=5
+            )
+            result = scanner.take_page(600, Path(directory), keep_raw=True)
+            self.assertEqual(result["status"], "stitched")
+            raw = Path(directory) / "raw" / "frame_0600"
+            self.assertTrue((raw / "000_preflight.png").is_file())
+            self.assertGreater(len(list(raw.glob("[0-9][0-9][0-9].png"))), 1)
 
     def test_snake_capture_from_simulated_viewer(self):
         source = self.source()
