@@ -36,7 +36,40 @@ rotate, rescale, improve, blend or invent pixels. When alignment is
 ambiguous or canvas coverage is incomplete, it fails without saving
 a supposedly complete image.
 
-## 2. Capture the currently visible page automatically
+## 2. Hide FamilySearch overlays without removing viewer functionality
+
+The optional [clean-view userscript](../familysearch-clean.user.js) hides **only
+the three elements documented from the FamilySearch viewer**:
+
+- the floating viewer HUD (`[data-left-controls]`), including the frame
+  counter, zoom and settings buttons;
+- the archive title/breadcrumb/action bar (identified by
+  `[data-testid="header-back-button"]`);
+- the global FamilySearch navigation header.
+
+Install the `familysearch-clean.user.js` file in a local userscript manager
+such as Tampermonkey, or run its complete JavaScript body as a browser
+DevTools snippet for the current page. The script makes **no network requests**,
+does not modify the image and does not remove the UI elements from the DOM.
+
+**Ctrl+Alt+H** switches clean view on/off. It is **off by default** so the
+frame counter and zoom controls remain accessible. The style rules continue
+to apply if FamilySearch re-renders these components.
+
+For automated capture, launch with `--clean-ui`. This toggles clean view
+**on before each page's screenshots and off before navigating to the next
+page**, so previously hidden controls can be used again.
+
+**Before running:** set your zoom and starting frame, ensure normal (visible)
+UI mode, then use Ctrl+Alt+H to preview clean mode and calibrate the
+`--region` screen coordinates **after** headers disappear. Return to
+normal mode before starting `--clean-ui`. The browser must have focus.
+
+This changes on-screen page layout; any previously calibrated screenshot
+rectangle or button coordinates may need to be rechecked. Hiding the floating
+HUD does not provide a shortcut to navigate frames.
+
+## 3. Capture the currently visible page automatically
 
 **Before launching**, open the first page in your browser and sign in
 yourself. The tool does not load a URL, nor can it verify the page number
@@ -98,3 +131,7 @@ counter. Inspect this against the actual website before trusting a batch.
   viewer. This does not recover original image data.
 - The utility does not determine or bypass legal permissions to save a
   restricted archive collection.
+
+The `--clean-ui` flag requires the user script above; it does not install
+browser extensions automatically. If no script is installed, do not use
+that flag: the hotkeys cannot be relied upon to hide the overlays.
