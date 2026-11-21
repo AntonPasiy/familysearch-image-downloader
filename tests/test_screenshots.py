@@ -14,7 +14,7 @@ except ImportError:
 
 if cv2 is not None:
     from PIL import Image, ImageChops, ImageDraw
-    from screenshot_capture import CaptureError, Region, Scanner, capture_pages
+    from screenshot_capture import CaptureError, Desktop, Region, Scanner, capture_pages
     from screenshot_stitch import StitchError, stitch
 
 
@@ -110,6 +110,93 @@ class ScreenshotTests(unittest.TestCase):
                         )
                         self.assertEqual(result[0]["page"], 600)
                     self.assertEqual(scanner.desktop.shortcuts, expected)
+
+    def test_ctrl_wheel_zoom_releases_modifier_on_failure(self):
+        class FakeGui:
+            def __init__(self):
+                self.events = []
+
+            def moveTo(self, x, y):
+                self.events.append(("move", x, y))
+
+            def keyDown(self, key):
+                self.events.append(("down", key))
+
+            def scroll(self, steps):
+                self.events.append(("scroll", steps))
+                raise RuntimeError("simulated mouse failure")
+
+            def keyUp(self, key):
+                self.events.append(("up", key))
+
+        desktop = Desktop.__new__(Desktop)
+        desktop.gui = FakeGui()
+        desktop.pause = 0
+        with self.assertRaisesRegex(RuntimeError, "simulated mouse failure"):
+            desktop.ctrl_wheel_zoom(Region(100, 200, 800, 600), 3)
+        self.assertEqual(
+            desktop.gui.events,
+            [("move", 500, 500), ("down", "ctrl"), ("scroll", 3), ("up", "ctrl")],
+        )
+
+    def test_ctrl_wheel_zoom_precedes_snake_capture(self):
+        class FakeDesktop:
+            def __init__(self):
+                self.events = []
+
+            def ctrl_wheel_zoom(self, region, steps):
+                self.events.append(("ctrl_wheel_zoom", steps))
+
+        class FakeScanner:
+            def __init__(self, changed=True):
+                self.desktop = FakeDesktop()
+                self.region = Region(20, 40, 400, 300)
+                self.has_changed = changed
+
+            def grab(self):
+                self.desktop.events.append(("grab",))
+                return None
+
+            def changed(self, before, after):
+                self.desktop.events.append(("changed",))
+                return self.has_changed
+
+            def take_page(self, page, out, allow_single=False):
+                self.desktop.events.append(("capture", page))
+                return {"page": page, "status": "stitched", "tiles": 3}
+
+        with tempfile.TemporaryDirectory() as directory:
+            scanner = FakeScanner()
+            reports = capture_pages(
+                scanner, start=600, end=600, out=Path(directory),
+                ctrl_wheel_zoom=4,
+            )
+            self.assertEqual(reports[0]["page"], 600)
+            self.assertEqual(
+                scanner.desktop.events,
+                [
+                    ("grab",), ("ctrl_wheel_zoom", 4), ("grab",),
+                    ("changed",), ("capture", 600),
+                ],
+            )
+            no_change_scanner = FakeScanner(changed=False)
+            with self.assertRaisesRegex(CaptureError, "did not visibly change"):
+                capture_pages(
+                    no_change_scanner, start=600, end=600,
+                    out=Path(directory), ctrl_wheel_zoom=2,
+                )
+            self.assertNotIn(("capture", 600), no_change_scanner.desktop.events)
+
+    def test_ctrl_wheel_and_button_zoom_are_mutually_exclusive(self):
+        class FakeScanner:
+            pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(CaptureError, "only one zoom method"):
+                capture_pages(
+                    FakeScanner(), start=600, end=600, out=Path(directory),
+                    ctrl_wheel_zoom=2, zoom_count=2, zoom_click=(10, 10),
+                )
 
     def test_snake_capture_from_simulated_viewer(self):
         source = self.source()
