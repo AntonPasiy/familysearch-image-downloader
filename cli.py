@@ -111,9 +111,7 @@ def select_group_frames(group: ImageGroup, frames: tuple[int, int] | None) -> li
             selected[number] = url
     missing = [str(number) for number in range(start, end + 1) if number not in selected]
     if missing:
-        raise DownloadError(
-            "Image group is missing requested frame(s): " + ", ".join(missing[:10])
-        )
+        raise DownloadError("Image group is missing requested frame(s): " + ", ".join(missing[:10]))
     return [selected[number] for number in range(start, end + 1)]
 
 
