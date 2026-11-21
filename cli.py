@@ -319,6 +319,10 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--next-key", help="keyboard key for Next, e.g. right")
     capture.add_argument("--zoom-click", metavar="X,Y", help="viewer zoom-in button coordinate")
     capture.add_argument("--zoom-count", type=int, default=0, help="zoom-in clicks before first frame")
+    capture.add_argument(
+        "--clean-ui", action="store_true",
+        help="toggle installed FamilySearch clean-view userscript during each capture",
+    )
     capture.add_argument("--step", type=float, default=0.65, help="viewport pan step (default 0.65)")
     capture.add_argument("--max-cols", type=int, default=12)
     capture.add_argument("--max-rows", type=int, default=12)
@@ -391,7 +395,7 @@ def main() -> int:
                     next_click=_point(args.next_click), next_key=args.next_key,
                     zoom_click=_point(args.zoom_click), zoom_count=args.zoom_count,
                     next_delay=args.next_delay, allow_single=args.allow_single,
-                    source_url=args.url,
+                    source_url=args.url, clean_ui=args.clean_ui,
                 )
             except (CaptureError, ValueError) as error:
                 raise DownloadError(str(error)) from error
