@@ -71,6 +71,10 @@ class Desktop:
         self.gui.press(key)
         time.sleep(self.pause)
 
+    def hotkey(self, *keys: str) -> None:
+        self.gui.hotkey(*keys)
+        time.sleep(self.pause)
+
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
 
@@ -186,6 +190,7 @@ def capture_pages(
     next_delay: float = 3.0,
     allow_single: bool = False,
     source_url: str = "",
+    clean_ui: bool = False,
 ) -> list[dict]:
     if not 1 <= start <= end:
         raise CaptureError("Page range must be positive and ascending")
@@ -198,7 +203,16 @@ def capture_pages(
         if frame == start and zoom_click and zoom_count:
             for _ in range(zoom_count):
                 scanner.desktop.click(*zoom_click)
-        report = scanner.take_page(frame, out, allow_single=allow_single)
+        if clean_ui:
+            scanner.desktop.hotkey("ctrl", "alt", "h")
+            scanner.desktop.sleep(0.5)
+        try:
+            report = scanner.take_page(frame, out, allow_single=allow_single)
+        finally:
+            if clean_ui:
+                # Restore HUD for the Next button; also restore on capture errors.
+                scanner.desktop.hotkey("ctrl", "alt", "h")
+                scanner.desktop.sleep(0.5)
         report["viewer_frame_number_verified"] = False  # counter not parsed
         reports.append(report)
         manifest.write_text(
