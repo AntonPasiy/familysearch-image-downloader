@@ -86,9 +86,7 @@ class FrameSelectionTests(unittest.TestCase):
     @patch("cli.download_document")
     @patch("cli.fetch_image_group", return_value=fake_group())
     @patch("cli.get_session", return_value="test-session")
-    def test_cli_downloads_only_selected_frames_in_png(
-        self, session, fetch_group, download, sleep
-    ):
+    def test_cli_downloads_only_selected_frames_in_png(self, session, fetch_group, download, sleep):
         download.return_value = Mock(path=Path("page.png"), width=10, height=10)
         with TemporaryDirectory() as directory, redirect_stdout(io.StringIO()):
             args = cli.build_parser().parse_args(
