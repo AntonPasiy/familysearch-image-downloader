@@ -63,6 +63,26 @@ class Desktop:
         gui.dragRel(dx, dy, duration=0.45, button="left")
         time.sleep(self.pause)
 
+    def ctrl_wheel_zoom(self, region: Region, steps: int) -> None:
+        """Send Ctrl+wheel at the center of the image viewport.
+
+        A positive step count turns the wheel up. Always release Ctrl even
+        when PyAutoGUI raises, so subsequent drags do not use a modifier.
+        """
+        if steps <= 0:
+            raise CaptureError("Ctrl+wheel zoom steps must be positive.")
+        gui = self.gui
+        gui.moveTo(
+            region.x + region.width // 2,
+            region.y + region.height // 2,
+        )
+        gui.keyDown("ctrl")
+        try:
+            gui.scroll(steps)
+        finally:
+            gui.keyUp("ctrl")
+        time.sleep(self.pause)
+
     def click(self, x: int, y: int) -> None:
         self.gui.click(x, y)
         time.sleep(self.pause)
@@ -187,6 +207,7 @@ def capture_pages(
     next_key: str | None = None,
     zoom_click: tuple[int, int] | None = None,
     zoom_count: int = 0,
+    ctrl_wheel_zoom: int = 0,
     next_delay: float = 3.0,
     allow_single: bool = False,
     source_url: str = "",
@@ -196,13 +217,26 @@ def capture_pages(
         raise CaptureError("Page range must be positive and ascending")
     if start != end and not (next_click or next_key):
         raise CaptureError("Multiple pages require --next-click or --next-key")
+    if ctrl_wheel_zoom < 0:
+        raise CaptureError("Ctrl+wheel zoom must be zero or positive.")
+    if ctrl_wheel_zoom and zoom_count:
+        raise CaptureError("Use only one zoom method: Ctrl+wheel or zoom button.")
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "capture_manifest.json"
     reports: list[dict] = []
     for frame in range(start, end + 1):
-        if frame == start and zoom_click and zoom_count:
-            for _ in range(zoom_count):
-                scanner.desktop.click(*zoom_click)
+        if frame == start:
+            if zoom_click and zoom_count:
+                for _ in range(zoom_count):
+                    scanner.desktop.click(*zoom_click)
+            if ctrl_wheel_zoom:
+                before_zoom = scanner.grab()
+                scanner.desktop.ctrl_wheel_zoom(scanner.region, ctrl_wheel_zoom)
+                if not scanner.changed(before_zoom, scanner.grab()):
+                    raise CaptureError(
+                        "Ctrl+wheel did not visibly change the image viewport. "
+                        "Check browser focus and whether this viewer supports Ctrl+wheel."
+                    )
         if clean_ui:
             scanner.desktop.hotkey("ctrl", "alt", "h")
             scanner.desktop.sleep(0.5)
