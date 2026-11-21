@@ -5,10 +5,10 @@
 1. The CLI collects URLs from arguments and an input file, removes exact duplicates, and validates formats before requesting a session.
 2. For `groupId` links, `image-data` resolves the DGS number. For `imageGroupNumbers` links, the number comes directly from the URL.
 3. A metadata query supplies the title and archive reference; `film-data` returns ARK links. Optional metadata failures do not prevent page downloads.
-4. Pages enter the queue in source order. Existing JPEGs are decoded and skipped if readable.
+4. If `--frames START-END` is set, only those 1-based image group frames enter the queue; an invalid or missing frame is reported before images are downloaded. Otherwise the complete group is queued. Existing JPEGs or PNGs are decoded and skipped if readable.
 5. The downloader detects the highest available DeepZoom level and grid dimensions. Boundary detection uses exponential and binary search.
 6. Worker threads download tiles using separate HTTP sessions and a shared request pacer.
-7. Pillow assembles tiles with their overlap. A JPEG is saved to a temporary file beside the destination and atomically replaces it after saving succeeds.
+7. Pillow assembles tiles with their overlap. JPEG (default) or losslessly encoded PNG is saved to a temporary file and atomically replaces the destination. Source DeepZoom tiles are JPEG; PNG cannot restore their already-compressed details.
 
 ## Environment and dependencies
 
@@ -36,7 +36,7 @@
 
 - A persistent manifest with checksums and failed-page records for large batches.
 - Retry handling that respects `Retry-After` for HTTP 429 and temporary server failures.
-- Page range selection and group previews without downloading full images.
+- Group previews without downloading full images.
 - A separate API adapter with synthetic response fixtures.
 - Optional import of archive labels and priorities from research tables.
 

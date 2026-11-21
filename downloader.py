@@ -80,10 +80,13 @@ def atomic_output(path: Path) -> Iterator[Path]:
 
 
 def is_complete_image(path: Path) -> bool:
-    """Decode existing JPEGs before treating them as completed downloads."""
+    """Decode existing JPEGs and PNGs before treating them as completed downloads."""
+    expected = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}.get(path.suffix.lower())
+    if expected is None:
+        return False
     try:
         with Image.open(path) as image:
-            if image.format != "JPEG":
+            if image.format != expected:
                 return False
             image.load()
         return True
@@ -140,11 +143,17 @@ class DocumentLink:
     def safe_id(self) -> str:
         return self.ark_id.removeprefix("3:1:")
 
+    def filename_for_format(self, image_format: str = "jpeg") -> str:
+        if image_format not in {"jpeg", "png"}:
+            raise DownloadError("Image format must be jpeg or png.")
+        suffix = ".png" if image_format == "png" else ".jpg"
+        if self.page_number is None:
+            return f"familysearch_{self.safe_id}{suffix}"
+        return f"{self.page_number:04d}_familysearch_{self.safe_id}{suffix}"
+
     @property
     def filename(self) -> str:
-        if self.page_number is None:
-            return f"familysearch_{self.safe_id}.jpg"
-        return f"{self.page_number:04d}_familysearch_{self.safe_id}.jpg"
+        return self.filename_for_format()
 
 
 @dataclass(frozen=True)
@@ -689,7 +698,10 @@ def download_document(
     jpeg_quality: int = 95,
     workers: int = 8,
     progress: ProgressCallback | None = None,
+    image_format: str = "jpeg",
 ) -> DownloadResult:
+    if image_format not in {"jpeg", "png"}:
+        raise DownloadError("Image format must be jpeg or png.")
     if not 70 <= jpeg_quality <= 100:
         raise DownloadError("JPEG quality must be between 70 and 100.")
     if not 1 <= workers <= 16:
@@ -782,15 +794,19 @@ def download_document(
                                 y = max(0, row * TILE_SIZE - TILE_OVERLAP)
                                 canvas.paste(tile, (x, y))
 
-                output_path = output_dir / document.filename
+                output_path = output_dir / document.filename_for_format(image_format)
                 with atomic_output(output_path) as temporary:
-                    canvas.save(
-                        temporary,
-                        "JPEG",
-                        quality=jpeg_quality,
-                        subsampling=0,
-                        optimize=True,
-                    )
+                    if image_format == "png":
+                        # Lossless output of the decoded JPEG tiles; no second JPEG encoding.
+                        canvas.save(temporary, "PNG", optimize=True)
+                    else:
+                        canvas.save(
+                            temporary,
+                            "JPEG",
+                            quality=jpeg_quality,
+                            subsampling=0,
+                            optimize=True,
+                        )
 
         report(1.0, "Done")
         return DownloadResult(
