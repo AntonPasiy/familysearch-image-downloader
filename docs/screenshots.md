@@ -93,9 +93,12 @@ screen coordinates **once**:
   **Alt + wheel** for up/down travel. The existing `drag` mode remains
   the default. All wheel actions occur with the cursor at the center
   of `--region`.
-- `--wheel-ticks N`: send N wheel notches per pan step (default 3).
-  The resulting pixel displacement is determined by the viewer, not
-  by `--step`. Check that successive screenshots overlap by 25-35%.
+- `--wheel-ticks N`: send N wheel notches per pan step (**default 160**,
+  accepted range 1-400). The actual FamilySearch viewer moved approximately
+  **1 pixel per notch** in the first live test, so 3 notches were insufficient
+  to reach the image edges before the traversal limit. The resulting pixel
+  displacement is determined by the viewer, not by `--step`.
+  Check that successive screenshots overlap; lower the ticks if necessary.
 - `--invert-horizontal-wheel` or `--invert-vertical-wheel`: reverse
   direction when the viewer interprets wheel signs in the opposite
   direction. **Test this on one page before trusting the border coverage.**
@@ -110,6 +113,24 @@ screen coordinates **once**:
   the viewer's zoom-in button. Do not combine both zoom methods.
   If already zoomed manually, omit zoom flags entirely.
 
+Before doing any panning, **check the actual viewport**. In the Cursor
+integrated browser, the chat panel sometimes covers part of `--region`.
+Close or collapse the chat panel, return focus to the correct image, and run
+the following command. Use `--start-delay 10` if you need time to hide
+Cursor panels and return to the viewer.
+
+```powershell
+.\.venv\Scripts\fsd.exe capture --frames 600-600 `
+  --region 295,365,954,600 `
+  --pan-mode wheel --preview-only --start-delay 10 `
+  --out .\downloads\trial600_wheel_preview
+```
+
+Open `downloads/trial600_wheel_preview/preview.png`. It must show **the
+archive document**, not the Cursor chat or another window. This command
+does not zoom, pan, or advance the viewer. Repeat the preview with adjusted
+screen coordinates until the crop is correct.
+
 Start with just ONE frame, replacing these placeholder coordinates.
 When the image was already zoomed manually, omit any zoom flag:
 
@@ -117,7 +138,7 @@ When the image was already zoomed manually, omit any zoom flag:
 ```powershell
 .\.venv\Scripts\fsd.exe capture --frames 600-600 `
   --region 140,120,1200,760 `
-  --pan-mode wheel --wheel-ticks 3 `
+  --pan-mode wheel --wheel-ticks 160 `
   --out .\downloads\trial
 ```
 
@@ -127,8 +148,9 @@ zoomed in three times, the first test command is:
 ```powershell
 .\.venv\Scripts\fsd.exe capture --frames 600-600 `
   --region 295,365,954,600 `
-  --pan-mode wheel --wheel-ticks 3 `
-  --out .\downloads\trial600_wheel
+  --pan-mode wheel --wheel-ticks 160 `
+  --start-delay 10 `
+  --out .\downloads\trial600_wheel_v2
 ```
 
 Before the first screenshot, the scanner seeks both the **leftmost**
@@ -142,6 +164,9 @@ If navigation went the opposite way, add `--invert-horizontal-wheel`
 or `--invert-vertical-wheel` and retry in a fresh output directory.
 If overlap is insufficient, reduce `--wheel-ticks`. If reaching the
 edge takes too many captures, increase `--max-cols`/`--max-rows`.
+If seeking still fails, inspect the persisted
+`raw/frame_0600/000_preflight.png` and the axis-specific error. Seeking
+now permits up to 40 wheel moves per axis instead of the previous 15.
 
 Then, **only after the first frame is verified**:
 
@@ -149,7 +174,7 @@ Then, **only after the first frame is verified**:
 .\.venv\Scripts\fsd.exe capture --frames 600-620 `
   --region 140,120,1200,760 `
   --next-click 1400,600 `
-  --pan-mode wheel --wheel-ticks 3 `
+  --pan-mode wheel --wheel-ticks 160 `
   --out .\downloads\capture
 ```
 
