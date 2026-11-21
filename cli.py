@@ -320,6 +320,26 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--zoom-click", metavar="X,Y", help="viewer zoom-in button coordinate")
     capture.add_argument("--zoom-count", type=int, default=0, help="zoom-in clicks before first frame")
     capture.add_argument(
+        "--wheel-zoom", type=int, default=0,
+        help="plain mouse-wheel UP zoom steps in the image viewport before the first frame",
+    )
+    capture.add_argument(
+        "--pan-mode", choices=("drag", "wheel"), default="drag",
+        help="drag the image (default) or use Shift+wheel / Alt+wheel",
+    )
+    capture.add_argument(
+        "--wheel-ticks", type=int, default=3,
+        help="wheel notches per pan step in wheel mode (default 3)",
+    )
+    capture.add_argument(
+        "--invert-horizontal-wheel", action="store_true",
+        help="reverse Shift+wheel direction if it pans the wrong way",
+    )
+    capture.add_argument(
+        "--invert-vertical-wheel", action="store_true",
+        help="reverse Alt+wheel direction if it pans the wrong way",
+    )
+    capture.add_argument(
         "--ctrl-wheel-zoom", type=int, default=0,
         help="Ctrl+mouse-wheel UP this many notches at viewport center before first frame",
     )
@@ -374,7 +394,14 @@ def main() -> int:
             return 0
         elif args.command == "capture":
             try:
-                from screenshot_capture import CaptureError, Desktop, Region, Scanner, capture_pages
+                from screenshot_capture import (
+                    CaptureError,
+                    Desktop,
+                    Region,
+                    Scanner,
+                    WheelScanner,
+                    capture_pages,
+                )
             except ImportError as error:
                 raise DownloadError(
                     f"Cannot import screenshot tools: {error}. "
@@ -384,14 +411,17 @@ def main() -> int:
             if (
                 args.max_cols < 1 or args.max_rows < 1
                 or args.zoom_count < 0 or args.ctrl_wheel_zoom < 0
+                or args.wheel_zoom < 0
             ):
                 raise DownloadError(
                     "max-cols/max-rows must be >= 1; zoom counts must be >= 0"
                 )
-            if args.ctrl_wheel_zoom and args.zoom_count:
-                raise DownloadError(
-                    "Choose either --ctrl-wheel-zoom or --zoom-click/--zoom-count"
-                )
+            if sum(
+                bool(x) for x in (args.ctrl_wheel_zoom, args.wheel_zoom, args.zoom_count)
+            ) > 1:
+                raise DownloadError("Choose only one of the three zoom methods.")
+            if not 1 <= args.wheel_ticks <= 20:
+                raise DownloadError("--wheel-ticks must be between 1 and 20")
             if args.next_click and args.next_key:
                 raise DownloadError("Specify either --next-click or --next-key")
             if args.zoom_count and not args.zoom_click:
@@ -399,10 +429,19 @@ def main() -> int:
             try:
                 start, end = parse_frame_range(args.frames)
                 desktop = Desktop()
-                scanner = Scanner(
-                    desktop, Region.parse(args.region), step=args.step,
-                    max_cols=args.max_cols, max_rows=args.max_rows,
+                region = Region.parse(args.region)
+                scanner_settings = dict(
+                    step=args.step, max_cols=args.max_cols, max_rows=args.max_rows
                 )
+                if args.pan_mode == "wheel":
+                    scanner = WheelScanner(
+                        desktop, region, wheel_ticks=args.wheel_ticks,
+                        horizontal_sign=-1 if args.invert_horizontal_wheel else 1,
+                        vertical_sign=-1 if args.invert_vertical_wheel else 1,
+                        **scanner_settings,
+                    )
+                else:
+                    scanner = Scanner(desktop, region, **scanner_settings)
                 print(f"Open viewer at frame {start}. Starting in {args.start_delay}s...")
                 desktop.sleep(args.start_delay)
                 capture_pages(
@@ -410,6 +449,7 @@ def main() -> int:
                     next_click=_point(args.next_click), next_key=args.next_key,
                     zoom_click=_point(args.zoom_click), zoom_count=args.zoom_count,
                     ctrl_wheel_zoom=args.ctrl_wheel_zoom,
+                    wheel_zoom=args.wheel_zoom,
                     next_delay=args.next_delay, allow_single=args.allow_single,
                     source_url=args.url, clean_ui=args.clean_ui,
                 )
