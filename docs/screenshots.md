@@ -10,10 +10,16 @@ From the cloned fork in **Windows PowerShell**:
 
 ```powershell
 git switch feature/frame-range-png
-uv sync --locked --no-dev
+uv sync --locked --no-dev --reinstall-package familysearch-image-downloader
 uv pip install -r requirements-screenshots.txt
 .\.venv\Scripts\fsd.exe --help
 ```
+
+The explicit `--reinstall-package` is important after updating an existing
+checkout: it reinstalls the CLI with `screenshot_capture` and
+`screenshot_stitch` included in the distribution. Without that reinstall,
+older console-script environments can report `No module named
+screenshot_capture` even when OpenCV and PyAutoGUI are installed.
 
 Use the direct `.venv\Scripts\fsd.exe` after installing optional dependencies;
 a later `uv sync` may remove packages not declared in `uv.lock`.
