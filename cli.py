@@ -305,13 +305,98 @@ def build_parser() -> argparse.ArgumentParser:
         default=8,
         help="parallel tile requests (default: 8)",
     )
+
+    stitching = subparsers.add_parser("stitch", help="stitch local overlapping screenshots")
+    stitching.add_argument("folder", type=Path, help="folder with 001.png, 002.png, etc.")
+    stitching.add_argument("--out", type=Path, required=True, help="output PNG path")
+
+    capture = subparsers.add_parser(
+        "capture", help="pan and capture the visible document in an open desktop browser"
+    )
+    capture.add_argument("--frames", required=True, metavar="START-END")
+    capture.add_argument("--region", required=True, metavar="X,Y,WIDTH,HEIGHT")
+    capture.add_argument("--next-click", metavar="X,Y", help="screen coordinates of Next button")
+    capture.add_argument("--next-key", help="keyboard key for Next, e.g. right")
+    capture.add_argument("--zoom-click", metavar="X,Y", help="viewer zoom-in button coordinate")
+    capture.add_argument("--zoom-count", type=int, default=0, help="zoom-in clicks before first frame")
+    capture.add_argument("--step", type=float, default=0.65, help="viewport pan step (default 0.65)")
+    capture.add_argument("--max-cols", type=int, default=12)
+    capture.add_argument("--max-rows", type=int, default=12)
+    capture.add_argument("--start-delay", type=float, default=5.0)
+    capture.add_argument("--next-delay", type=float, default=3.0)
+    capture.add_argument("--allow-single", action="store_true")
+    capture.add_argument("--url", default="", help="source URL for metadata only")
+    capture.add_argument("--out", type=Path, required=True)
     return parser
+
+
+def _point(value: str | None) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    try:
+        parts = [int(part.strip()) for part in value.split(",")]
+    except ValueError as error:
+        raise DownloadError("Coordinates must be X,Y") from error
+    if len(parts) != 2 or min(parts) < 0:
+        raise DownloadError("Coordinates must be non-negative X,Y")
+    return parts[0], parts[1]
 
 
 def main() -> int:
     args = build_parser().parse_args()
     try:
-        if args.command == "login":
+        if args.command == "stitch":
+            try:
+                from screenshot_stitch import EXTENSIONS, StitchError, stitch
+            except ImportError as error:
+                raise DownloadError(
+                    "Install optional screenshot requirements first: "
+                    "uv pip install -r requirements-screenshots.txt"
+                ) from error
+            paths = sorted(
+                p for p in args.folder.iterdir()
+                if p.is_file() and p.suffix.lower() in EXTENSIONS and p != args.out
+            )
+            try:
+                result = stitch(paths, args.out)
+            except (StitchError, ValueError) as error:
+                raise DownloadError(str(error)) from error
+            print(f"Saved {result['path']}: {result['size']} from {result['images']} screenshots")
+            return 0
+        elif args.command == "capture":
+            try:
+                from screenshot_capture import CaptureError, Desktop, Region, Scanner, capture_pages
+            except ImportError as error:
+                raise DownloadError(
+                    "Install optional screenshot requirements first: "
+                    "uv pip install -r requirements-screenshots.txt"
+                ) from error
+            if args.max_cols < 1 or args.max_rows < 1 or args.zoom_count < 0:
+                raise DownloadError("max-cols/max-rows must be >= 1 and zoom-count >= 0")
+            if args.next_click and args.next_key:
+                raise DownloadError("Specify either --next-click or --next-key")
+            if args.zoom_count and not args.zoom_click:
+                raise DownloadError("--zoom-count requires --zoom-click")
+            try:
+                start, end = parse_frame_range(args.frames)
+                desktop = Desktop()
+                scanner = Scanner(
+                    desktop, Region.parse(args.region), step=args.step,
+                    max_cols=args.max_cols, max_rows=args.max_rows,
+                )
+                print(f"Open viewer at frame {start}. Starting in {args.start_delay}s...")
+                desktop.sleep(args.start_delay)
+                capture_pages(
+                    scanner, start=start, end=end, out=args.out,
+                    next_click=_point(args.next_click), next_key=args.next_key,
+                    zoom_click=_point(args.zoom_click), zoom_count=args.zoom_count,
+                    next_delay=args.next_delay, allow_single=args.allow_single,
+                    source_url=args.url,
+                )
+            except (CaptureError, ValueError) as error:
+                raise DownloadError(str(error)) from error
+            return 0
+        elif args.command == "login":
             ask_fssessionid()
             print("Saved. It will be reused until FamilySearch rejects it.")
         elif args.command == "logout":
