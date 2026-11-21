@@ -6,6 +6,7 @@ No browser internals, cookies, API endpoints or download controls are accessed.
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,7 +177,9 @@ class Scanner:
         self.seek_edge(0, +self.dy)
         self.seek_edge(+self.dx, 0)
 
-    def take_page(self, page: int, out: Path, *, allow_single: bool = False) -> dict:
+    def take_page(
+        self, page: int, out: Path, *, allow_single: bool = False, keep_raw: bool = False
+    ) -> dict:
         result_path = out / f"frame_{page:04d}.png"
         if result_path.exists():
             return {"page": page, "status": "already_exists"}
@@ -220,6 +223,17 @@ class Scanner:
             result = stitch(paths, result_path)
         except StitchError as exc:
             raise CaptureError(f"Frame {page}: {exc}") from exc
+        # Raw screenshots are temporary. Remove only after a successful
+        # stitch, so failures retain the inputs needed for diagnosis/retry.
+        if not keep_raw:
+            try:
+                shutil.rmtree(raw)
+                if not any(raw.parent.iterdir()):
+                    raw.parent.rmdir()
+            except OSError as exc:
+                print(
+                    f"Warning: frame {page} is stitched but raw cleanup failed: {exc}"
+                )
         return {
             "page": page,
             "status": "stitched",
@@ -301,6 +315,7 @@ def capture_pages(
     wheel_zoom: int = 0,
     next_delay: float = 3.0,
     allow_single: bool = False,
+    keep_raw: bool = False,
     source_url: str = "",
     clean_ui: bool = False,
 ) -> list[dict]:
@@ -335,7 +350,12 @@ def capture_pages(
             scanner.desktop.hotkey("ctrl", "alt", "h")
             scanner.desktop.sleep(0.5)
         try:
-            report = scanner.take_page(frame, out, allow_single=allow_single)
+            if keep_raw:
+                report = scanner.take_page(
+                    frame, out, allow_single=allow_single, keep_raw=True
+                )
+            else:
+                report = scanner.take_page(frame, out, allow_single=allow_single)
         finally:
             if clean_ui:
                 # Restore HUD for the Next button; also restore on capture errors.
