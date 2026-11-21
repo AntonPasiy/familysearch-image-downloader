@@ -290,6 +290,91 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse(scanner.move(0, -100))
         self.assertEqual(desktop.commands, [("shift", -2), ("alt", -2)])
 
+    def test_slow_wheel_panning_reaches_edge_after_more_than_15_steps(self):
+        import numpy as np
+
+        source = Image.fromarray(
+            np.random.default_rng(15).integers(
+                0, 256, size=(280, 4200, 3), dtype=np.uint8
+            )
+        )
+
+        class SlowWheelDesktop:
+            def __init__(self):
+                self.x = 2900
+                self.wheel_calls = 0
+
+            def screenshot(self, region):
+                return source.crop(
+                    (self.x, 0, self.x + region.width, region.height)
+                )
+
+            def modifier_wheel_pan(self, region, modifier, ticks):
+                self.wheel_calls += 1
+                assert modifier == "shift"
+                # The user observed only ~1 pixel of travel per wheel notch.
+                self.x = max(0, min(4200 - region.width, self.x - ticks))
+
+        desktop = SlowWheelDesktop()
+        scanner = WheelScanner(desktop, Region(0, 0, 400, 250))
+        self.assertEqual(scanner.wheel_ticks, 160)
+        scanner.seek_edge(+scanner.dx, 0)
+        self.assertEqual(desktop.x, 0)
+        self.assertGreater(desktop.wheel_calls, 15)
+
+    def test_preflight_is_saved_even_if_edge_seeking_fails(self):
+        class FailingScanner(Scanner):
+            def seek_origin(self):
+                raise CaptureError("simulated edge seeking failure")
+
+            def grab(self):
+                return Image.new("RGB", (400, 300), "white")
+
+        with tempfile.TemporaryDirectory() as directory:
+            scanner = FailingScanner(
+                object(), Region(0, 0, 400, 300),
+            )
+            with self.assertRaises(CaptureError):
+                scanner.take_page(600, Path(directory))
+            diagnostic = (
+                Path(directory) / "raw" / "frame_0600" / "000_preflight.png"
+            )
+            self.assertTrue(diagnostic.is_file())
+            with Image.open(diagnostic) as image:
+                self.assertEqual(image.size, (400, 300))
+
+    def test_preview_only_does_not_move_the_page(self):
+        import cli
+        from unittest.mock import patch
+
+        class PreviewDesktop:
+            def __init__(self):
+                self.sleeps = 0
+
+            def sleep(self, duration):
+                self.sleeps += 1
+
+            def screenshot(self, region):
+                return Image.new("RGB", (region.width, region.height), "blue")
+
+        desktop = PreviewDesktop()
+        with tempfile.TemporaryDirectory() as directory:
+            argv = [
+                "fsd", "capture", "--frames", "600-600",
+                "--region", "295,365,954,600",
+                "--preview-only", "--out", directory,
+            ]
+            with (
+                patch("sys.argv", argv),
+                patch("screenshot_capture.Desktop", return_value=desktop),
+            ):
+                self.assertEqual(cli.main(), 0)
+            target = Path(directory) / "preview.png"
+            self.assertTrue(target.is_file())
+            self.assertEqual(desktop.sleeps, 1)
+            with Image.open(target) as image:
+                self.assertEqual(image.size, (954, 600))
+
     def test_snake_capture_from_simulated_viewer(self):
         source = self.source()
 
