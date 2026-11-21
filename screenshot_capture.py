@@ -1,4 +1,4 @@
-"""Capture a visible permitted document by dragging its viewport on a Windows desktop.
+"""Capture an open document from a desktop viewport using wheel or drag navigation.
 
 The operator opens the first page and chooses a fixed capture rectangle.
 No browser internals, cookies, API endpoints or download controls are accessed.
@@ -61,6 +61,36 @@ class Desktop:
             region.y + region.height // 2,
         )
         gui.dragRel(dx, dy, duration=0.45, button="left")
+        time.sleep(self.pause)
+
+    def wheel_zoom(self, region: Region, steps: int) -> None:
+        """Zoom at viewport center using the unmodified mouse wheel."""
+        if steps <= 0:
+            raise CaptureError("Wheel zoom steps must be positive.")
+        self.gui.moveTo(
+            region.x + region.width // 2,
+            region.y + region.height // 2,
+        )
+        self.gui.scroll(steps)
+        time.sleep(self.pause)
+
+    def modifier_wheel_pan(
+        self, region: Region, modifier: str, signed_ticks: int
+    ) -> None:
+        """Scroll inside the viewport with Shift (horizontal) or Alt (vertical)."""
+        if modifier not in {"shift", "alt"}:
+            raise CaptureError("Wheel pan modifier must be shift or alt.")
+        if not signed_ticks:
+            raise CaptureError("Wheel pan requires a nonzero signed tick count.")
+        self.gui.moveTo(
+            region.x + region.width // 2,
+            region.y + region.height // 2,
+        )
+        self.gui.keyDown(modifier)
+        try:
+            self.gui.scroll(signed_ticks)
+        finally:
+            self.gui.keyUp(modifier)
         time.sleep(self.pause)
 
     def ctrl_wheel_zoom(self, region: Region, steps: int) -> None:
@@ -197,6 +227,48 @@ class Scanner:
         }
 
 
+
+class WheelScanner(Scanner):
+    """Use modifier+wheel panning while retaining the tested snake scan.
+
+    Positive requested image movement (as with dragging right/down) maps
+    to positive wheel ticks unless the corresponding axis is inverted.
+    Verify direction in the actual viewer before trusting a full scan.
+    """
+
+    def __init__(
+        self,
+        desktop: Desktop,
+        region: Region,
+        *,
+        wheel_ticks: int = 3,
+        horizontal_sign: int = 1,
+        vertical_sign: int = 1,
+        **kwargs,
+    ):
+        super().__init__(desktop, region, **kwargs)
+        if not 1 <= wheel_ticks <= 20:
+            raise CaptureError("--wheel-ticks must be between 1 and 20.")
+        if horizontal_sign not in (-1, 1) or vertical_sign not in (-1, 1):
+            raise CaptureError("Wheel axis signs must be +1 or -1.")
+        self.wheel_ticks = wheel_ticks
+        self.horizontal_sign = horizontal_sign
+        self.vertical_sign = vertical_sign
+
+    def move(self, dx: int, dy: int) -> bool:
+        if bool(dx) == bool(dy):
+            raise CaptureError("Wheel pan must target exactly one axis.")
+        before = self.grab()
+        if dx:
+            modifier = "shift"
+            ticks = (1 if dx > 0 else -1) * self.horizontal_sign * self.wheel_ticks
+        else:
+            modifier = "alt"
+            ticks = (1 if dy > 0 else -1) * self.vertical_sign * self.wheel_ticks
+        self.desktop.modifier_wheel_pan(self.region, modifier, ticks)
+        return self.changed(before, self.grab())
+
+
 def capture_pages(
     scanner: Scanner,
     *,
@@ -208,6 +280,7 @@ def capture_pages(
     zoom_click: tuple[int, int] | None = None,
     zoom_count: int = 0,
     ctrl_wheel_zoom: int = 0,
+    wheel_zoom: int = 0,
     next_delay: float = 3.0,
     allow_single: bool = False,
     source_url: str = "",
@@ -217,10 +290,10 @@ def capture_pages(
         raise CaptureError("Page range must be positive and ascending")
     if start != end and not (next_click or next_key):
         raise CaptureError("Multiple pages require --next-click or --next-key")
-    if ctrl_wheel_zoom < 0:
-        raise CaptureError("Ctrl+wheel zoom must be zero or positive.")
-    if ctrl_wheel_zoom and zoom_count:
-        raise CaptureError("Use only one zoom method: Ctrl+wheel or zoom button.")
+    if min(ctrl_wheel_zoom, wheel_zoom, zoom_count) < 0:
+        raise CaptureError("Zoom step counts cannot be negative.")
+    if sum(bool(value) for value in (ctrl_wheel_zoom, wheel_zoom, zoom_count)) > 1:
+        raise CaptureError("Use only one zoom method per run.")
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "capture_manifest.json"
     reports: list[dict] = []
@@ -229,13 +302,16 @@ def capture_pages(
             if zoom_click and zoom_count:
                 for _ in range(zoom_count):
                     scanner.desktop.click(*zoom_click)
-            if ctrl_wheel_zoom:
+            if ctrl_wheel_zoom or wheel_zoom:
                 before_zoom = scanner.grab()
-                scanner.desktop.ctrl_wheel_zoom(scanner.region, ctrl_wheel_zoom)
+                if wheel_zoom:
+                    scanner.desktop.wheel_zoom(scanner.region, wheel_zoom)
+                else:
+                    scanner.desktop.ctrl_wheel_zoom(scanner.region, ctrl_wheel_zoom)
                 if not scanner.changed(before_zoom, scanner.grab()):
                     raise CaptureError(
-                        "Ctrl+wheel did not visibly change the image viewport. "
-                        "Check browser focus and whether this viewer supports Ctrl+wheel."
+                        "Mouse-wheel zoom did not visibly change the image viewport. "
+                        "Check focus and the viewer's wheel controls."
                     )
         if clean_ui:
             scanner.desktop.hotkey("ctrl", "alt", "h")
