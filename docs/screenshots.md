@@ -89,6 +89,20 @@ screen coordinates **once**:
   capturing.
 - `--next-click X,Y`: on-screen Next-page control, OR `--next-key right`.
   Test it on a small range first.
+- `--pan-mode wheel`: use **Shift + wheel** for left/right travel and
+  **Alt + wheel** for up/down travel. The existing `drag` mode remains
+  the default. All wheel actions occur with the cursor at the center
+  of `--region`.
+- `--wheel-ticks N`: send N wheel notches per pan step (default 3).
+  The resulting pixel displacement is determined by the viewer, not
+  by `--step`. Check that successive screenshots overlap by 25-35%.
+- `--invert-horizontal-wheel` or `--invert-vertical-wheel`: reverse
+  direction when the viewer interprets wheel signs in the opposite
+  direction. **Test this on one page before trusting the border coverage.**
+- `--wheel-zoom N`: use N notches of the **unmodified wheel** to zoom
+  the document (not Ctrl+wheel). This is done only before the first
+  frame, before seeking the document edges. If already manually zoomed,
+  **do not specify a zoom flag**.
 - `--ctrl-wheel-zoom N`: put the pointer at the center of --region,
   hold Ctrl, turn the mouse wheel upward N notches, release Ctrl, then
   begin the snake scan. This is applied once before the first frame.
@@ -96,14 +110,38 @@ screen coordinates **once**:
   the viewer's zoom-in button. Do not combine both zoom methods.
   If already zoomed manually, omit zoom flags entirely.
 
-Start with just ONE frame, replacing these placeholder coordinates:
+Start with just ONE frame, replacing these placeholder coordinates.
+When the image was already zoomed manually, omit any zoom flag:
+
 
 ```powershell
 .\.venv\Scripts\fsd.exe capture --frames 600-600 `
   --region 140,120,1200,760 `
-  --ctrl-wheel-zoom 3 `
+  --pan-mode wheel --wheel-ticks 3 `
   --out .\downloads\trial
 ```
+
+For the known 1796 document, where frame 600 is already open and
+zoomed in three times, the first test command is:
+
+```powershell
+.\.venv\Scripts\fsd.exe capture --frames 600-600 `
+  --region 295,365,954,600 `
+  --pan-mode wheel --wheel-ticks 3 `
+  --out .\downloads\trial600_wheel
+```
+
+Before the first screenshot, the scanner seeks both the **leftmost**
+(Shift + wheel) and **topmost** (Alt + wheel) boundaries. It then sweeps
+left to right, moves down, sweeps right to left, and so on until both
+horizontal and vertical boundaries are reached. These are mechanical
+movement limits detected by unchanged screenshots; physical paper edges
+must still be visually verified.
+
+If navigation went the opposite way, add `--invert-horizontal-wheel`
+or `--invert-vertical-wheel` and retry in a fresh output directory.
+If overlap is insufficient, reduce `--wheel-ticks`. If reaching the
+edge takes too many captures, increase `--max-cols`/`--max-rows`.
 
 Then, **only after the first frame is verified**:
 
@@ -111,6 +149,7 @@ Then, **only after the first frame is verified**:
 .\.venv\Scripts\fsd.exe capture --frames 600-620 `
   --region 140,120,1200,760 `
   --next-click 1400,600 `
+  --pan-mode wheel --wheel-ticks 3 `
   --out .\downloads\capture
 ```
 
@@ -121,11 +160,11 @@ or `--zoom-click X,Y --zoom-count 2`,
 **visually confirmed** to contain the complete page).
 
 Zoom occurs before seeking the top-left image edge or taking screenshots.
-If Ctrl+wheel does not visibly change the viewport, capture stops.
-Ensure the viewer image zooms rather than the entire browser page.
-Recalibrate `--region` if page layout changes. Zoom is not applied
-again to later frames to avoid cumulative scaling; verify that the viewer
-preserves scale before starting a batch.
+For this viewer the **plain wheel**, not Ctrl+wheel, controls image zoom.
+`--wheel-zoom 3` uses the plain wheel; `--ctrl-wheel-zoom` is retained
+for other viewers only. If the zoom does not visibly change the viewport,
+capture stops. Zoom is not applied again to later frames, avoiding
+cumulative scaling. Verify that the viewer preserves scale between frames.
 
 The script seeks the top-left image edge, pans in a snake path, takes
 overlapping PNG screenshots, stitches each page, then operates the
