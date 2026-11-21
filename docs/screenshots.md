@@ -1,8 +1,7 @@
 # Screenshot stitching and visible-desktop capture (Windows)
 
 These are optional `fsd stitch` and `fsd capture` commands. The existing
-`fsd download` command is unchanged. **Use only with collections for which
-saving copies is permitted**. These tools do not access browser cookies,
+`fsd download` command is unchanged. These tools do not access browser cookies,
 hidden APIs or disabled download controls.
 
 ## Install
@@ -129,8 +128,6 @@ counter. Inspect this against the actual website before trusting a batch.
   limit is reached, the command fails. Raw screenshots remain available.
 - Source image detail is limited to what was *actually displayed* by the
   viewer. This does not recover original image data.
-- The utility does not determine or bypass legal permissions to save a
-  restricted archive collection.
 
 The `--clean-ui` flag requires the user script above; it does not install
 browser extensions automatically. If no script is installed, do not use
