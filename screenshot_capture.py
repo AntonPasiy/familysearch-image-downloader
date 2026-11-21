@@ -183,6 +183,9 @@ class Scanner:
         out.mkdir(parents=True, exist_ok=True)
         raw = out / "raw" / f"frame_{page:04d}"
         raw.mkdir(parents=True, exist_ok=True)
+        # Keep the original viewport as diagnostics even if seeking an edge
+        # fails before the first numbered screenshot can be captured.
+        self.grab().save(raw / "000_preflight.png", "PNG")
         self.seek_origin()
         paths: list[Path] = []
         moved_x = moved_y = False
@@ -241,19 +244,34 @@ class WheelScanner(Scanner):
         desktop: Desktop,
         region: Region,
         *,
-        wheel_ticks: int = 3,
+        wheel_ticks: int = 160,
         horizontal_sign: int = 1,
         vertical_sign: int = 1,
         **kwargs,
     ):
         super().__init__(desktop, region, **kwargs)
-        if not 1 <= wheel_ticks <= 20:
-            raise CaptureError("--wheel-ticks must be between 1 and 20.")
+        if not 1 <= wheel_ticks <= 400:
+            raise CaptureError("--wheel-ticks must be between 1 and 400.")
         if horizontal_sign not in (-1, 1) or vertical_sign not in (-1, 1):
             raise CaptureError("Wheel axis signs must be +1 or -1.")
         self.wheel_ticks = wheel_ticks
         self.horizontal_sign = horizontal_sign
         self.vertical_sign = vertical_sign
+
+    def seek_edge(self, dx: int, dy: int) -> None:
+        # Wheel navigation can move only ~1 pixel per notch in this viewer.
+        # Keep a generous ceiling and log how long it takes to find the edge.
+        axis = "horizontal" if dx else "vertical"
+        for attempt in range(1, 41):
+            if not self.move(dx, dy):
+                print(f"{axis} edge reached after {attempt - 1} wheel pan steps")
+                return
+        raise CaptureError(
+            f"Could not reach {axis} edge within 40 steps "
+            f"({self.wheel_ticks} wheel ticks each). "
+            "Inspect raw/*/000_preflight.png and increase --wheel-ticks "
+            "or verify the viewport is not covered by another panel."
+        )
 
     def move(self, dx: int, dy: int) -> bool:
         if bool(dx) == bool(dy):
