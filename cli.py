@@ -320,6 +320,10 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--zoom-click", metavar="X,Y", help="viewer zoom-in button coordinate")
     capture.add_argument("--zoom-count", type=int, default=0, help="zoom-in clicks before first frame")
     capture.add_argument(
+        "--ctrl-wheel-zoom", type=int, default=0,
+        help="Ctrl+mouse-wheel UP this many notches at viewport center before first frame",
+    )
+    capture.add_argument(
         "--clean-ui", action="store_true",
         help="toggle installed FamilySearch clean-view userscript during each capture",
     )
@@ -377,8 +381,17 @@ def main() -> int:
                     "Update your installed project and install optional dependencies: "
                     "uv pip install -r requirements-screenshots.txt"
                 ) from error
-            if args.max_cols < 1 or args.max_rows < 1 or args.zoom_count < 0:
-                raise DownloadError("max-cols/max-rows must be >= 1 and zoom-count >= 0")
+            if (
+                args.max_cols < 1 or args.max_rows < 1
+                or args.zoom_count < 0 or args.ctrl_wheel_zoom < 0
+            ):
+                raise DownloadError(
+                    "max-cols/max-rows must be >= 1; zoom counts must be >= 0"
+                )
+            if args.ctrl_wheel_zoom and args.zoom_count:
+                raise DownloadError(
+                    "Choose either --ctrl-wheel-zoom or --zoom-click/--zoom-count"
+                )
             if args.next_click and args.next_key:
                 raise DownloadError("Specify either --next-click or --next-key")
             if args.zoom_count and not args.zoom_click:
@@ -396,6 +409,7 @@ def main() -> int:
                     scanner, start=start, end=end, out=args.out,
                     next_click=_point(args.next_click), next_key=args.next_key,
                     zoom_click=_point(args.zoom_click), zoom_count=args.zoom_count,
+                    ctrl_wheel_zoom=args.ctrl_wheel_zoom,
                     next_delay=args.next_delay, allow_single=args.allow_single,
                     source_url=args.url, clean_ui=args.clean_ui,
                 )
